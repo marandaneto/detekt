@@ -7,9 +7,15 @@ import io.gitlab.arturbosch.detekt.api.Entity
 import io.gitlab.arturbosch.detekt.api.Issue
 import io.gitlab.arturbosch.detekt.api.Rule
 import io.gitlab.arturbosch.detekt.api.Severity
+import io.gitlab.arturbosch.detekt.api.internal.RequiresTypeResolution
 import io.gitlab.arturbosch.detekt.rules.IT_LITERAL
+import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
 import org.jetbrains.kotlin.psi.KtLambdaExpression
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
+import org.jetbrains.kotlin.psi.psiUtil.anyDescendantOfType
+import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
 
 /**
  * Lambda expressions are very useful in a lot of cases and they often include very small chunks of
@@ -60,12 +66,14 @@ import org.jetbrains.kotlin.resolve.BindingContext
  * }
  * </compliant>
  *
- * @requiresTypeResolution
  */
+@RequiresTypeResolution
 class MultilineLambdaItParameter(val config: Config) : Rule(config) {
     override val issue = Issue(
-        javaClass.simpleName, Severity.Style,
-        "Multiline lambdas should not use `it` as a parameter name", Debt.FIVE_MINS
+        javaClass.simpleName,
+        Severity.Style,
+        "Multiline lambdas should not use `it` as a parameter name",
+        Debt.FIVE_MINS
     )
 
     override fun visitLambdaExpression(lambdaExpression: KtLambdaExpression) {
@@ -80,17 +88,22 @@ class MultilineLambdaItParameter(val config: Config) : Rule(config) {
             IT_LITERAL in parameterNames ->
                 report(
                     CodeSmell(
-                        issue, Entity.from(lambdaExpression),
+                        issue,
+                        Entity.from(lambdaExpression),
                         "The parameter name in a multiline lambda should not be an explicit `it`. " +
                             "Consider giving your parameter a readable and descriptive name."
                     )
                 )
             // Implicit `it`
             parameterNames.isEmpty() -> {
-                if (lambdaExpression.hasImplicitParameter(bindingContext)) {
+                val implicitParameter = lambdaExpression.implicitParameter(bindingContext)
+                if (implicitParameter != null &&
+                    lambdaExpression.hasImplicitParameterReference(implicitParameter, bindingContext)
+                ) {
                     report(
                         CodeSmell(
-                            issue, Entity.from(lambdaExpression),
+                            issue,
+                            Entity.from(lambdaExpression),
                             "The implicit `it` should be used in a multiline lambda. " +
                                 "Consider giving your parameter a readable and descriptive name."
                         )
@@ -101,7 +114,26 @@ class MultilineLambdaItParameter(val config: Config) : Rule(config) {
         }
     }
 
-    private fun KtLambdaExpression.hasImplicitParameter(bindingContext: BindingContext): Boolean {
-        return (bindingContext[BindingContext.FUNCTION, functionLiteral]?.valueParameters?.singleOrNull()) != null
+    private fun KtLambdaExpression.implicitParameter(bindingContext: BindingContext): ValueParameterDescriptor? {
+        return bindingContext[BindingContext.FUNCTION, functionLiteral]?.valueParameters?.singleOrNull()
+    }
+
+    private fun KtLambdaExpression.hasImplicitParameterReference(
+        implicitParameter: ValueParameterDescriptor,
+        bindingContext: BindingContext
+    ): Boolean {
+        return anyDescendantOfType<KtNameReferenceExpression> {
+            it.isImplicitParameterReference(this, implicitParameter, bindingContext)
+        }
+    }
+
+    private fun KtNameReferenceExpression.isImplicitParameterReference(
+        lambda: KtLambdaExpression,
+        implicitParameter: ValueParameterDescriptor,
+        bindingContext: BindingContext
+    ): Boolean {
+        return text == "it" &&
+            getStrictParentOfType<KtLambdaExpression>() == lambda &&
+            getResolvedCall(bindingContext)?.resultingDescriptor == implicitParameter
     }
 }

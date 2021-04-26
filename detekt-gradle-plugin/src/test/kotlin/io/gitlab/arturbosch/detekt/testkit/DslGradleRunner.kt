@@ -6,13 +6,13 @@ import java.io.File
 import java.nio.file.Files
 import java.util.UUID
 
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "ClassOrdering")
 class DslGradleRunner @Suppress("LongParameterList") constructor(
     val projectLayout: ProjectLayout,
     val buildFileName: String,
     val mainBuildFileContent: String,
     val configFileOrNone: String? = null,
-    val baselineFileOrNone: String? = null,
+    val baselineFiles: List<String> = emptyList(),
     val gradleVersionOrNone: String? = null,
     val dryRun: Boolean = false
 ) {
@@ -56,7 +56,7 @@ class DslGradleRunner @Suppress("LongParameterList") constructor(
         writeProjectFile(buildFileName, mainBuildFileContent)
         writeProjectFile(SETTINGS_FILENAME, settingsContent)
         configFileOrNone?.let { writeProjectFile(configFileOrNone, configFileContent) }
-        baselineFileOrNone?.let { writeProjectFile(baselineFileOrNone, baselineContent) }
+        baselineFiles.forEach { file -> writeProjectFile(file, baselineContent) }
         projectLayout.srcDirs.forEachIndexed { srcDirIdx, sourceDir ->
             repeat(projectLayout.numberOfSourceFilesInRootPerSourceDir) { srcFileIndex ->
                 val withCodeSmell =
@@ -71,17 +71,17 @@ class DslGradleRunner @Suppress("LongParameterList") constructor(
         }
 
         projectLayout.submodules.forEach { submodule ->
-            val moduleRoot = File(rootDir, submodule.name)
-            moduleRoot.mkdirs()
-            File(moduleRoot, buildFileName).writeText(submodule.buildFileContent ?: "")
+            submodule.writeModuleFile(buildFileName, submodule.buildFileContent ?: "")
+            submodule.baselineFiles.forEach { file -> submodule.writeModuleFile(file, baselineContent) }
             submodule.srcDirs.forEachIndexed { srcDirIdx, moduleSourceDir ->
                 repeat(submodule.numberOfSourceFilesPerSourceDir) {
                     val withCodeSmell =
                         srcDirIdx * submodule.numberOfSourceFilesPerSourceDir + it < submodule.numberOfCodeSmells
                     writeKtFile(
-                        dir = File(moduleRoot, moduleSourceDir),
+                        dir = File(submodule.moduleRoot, moduleSourceDir),
                         className = "My$srcDirIdx${submodule.name}${it}Class",
-                        withCodeSmell = withCodeSmell)
+                        withCodeSmell = withCodeSmell
+                    )
                 }
             }
         }
@@ -97,10 +97,19 @@ class DslGradleRunner @Suppress("LongParameterList") constructor(
         writeKtFile(File(rootDir, srcDir), className)
     }
 
+    fun Submodule.projectFile(path: String): File = File(moduleRoot, path).canonicalFile
+
     private fun writeKtFile(dir: File, className: String, withCodeSmell: Boolean = false) {
         dir.mkdirs()
         File(dir, "$className.kt").writeText(ktFileContent(className, withCodeSmell))
     }
+
+    private fun Submodule.writeModuleFile(filename: String, content: String) {
+        File(moduleRoot, filename).writeText(content)
+    }
+
+    private val Submodule.moduleRoot: File
+        get() = File(rootDir, name).apply { mkdirs() }
 
     @OptIn(ExperimentalStdlibApi::class)
     private fun buildGradleRunner(tasks: List<String>): GradleRunner {
@@ -149,4 +158,22 @@ class DslGradleRunner @Suppress("LongParameterList") constructor(
         const val SETTINGS_FILENAME = "settings.gradle"
         private const val DETEKT_TASK = "detekt"
     }
+}
+
+fun DslGradleRunner.createJavaClass(name: String) {
+    projectFile("${projectLayout.srcDirs.first { it.contains("main") }}/$name.java")
+        .apply { createNewFile() }
+        .writeText("public class $name {}")
+    projectFile("${projectLayout.srcDirs.first { it.contains("test") }}/${name}Test.java")
+        .apply { createNewFile() }
+        .writeText("public class ${name}Test {}")
+}
+
+fun DslGradleRunner.createJavaClass(submodule: Submodule, name: String) {
+    submodule.projectFile("${submodule.srcDirs.first { it.contains("main") }}/$name.java")
+        .apply { createNewFile() }
+        .writeText("public class $name {}")
+    submodule.projectFile("${submodule.srcDirs.first { it.contains("test") }}/${name}Test.java")
+        .apply { createNewFile() }
+        .writeText("public class ${name}Test {}")
 }

@@ -10,7 +10,7 @@ This page explains how you can use our **latest snapshots** to test upcoming unr
 
 ## Where to download snapshots
 
-You can find the latest snapshot on [sonatype](https://oss.sonatype.org/#view-repositories;snapshots~browsestorage~io/gitlab/arturbosch/detekt). A new snapshot is published after every merge to `master` from the [Deploy Snapshot](https://github.com/detekt/detekt/actions?query=workflow%3A%22Deploy+Snapshot%22) Github Action workflow. 
+You can find the latest snapshot on [sonatype](https://oss.sonatype.org/#view-repositories;snapshots~browsestorage~io/gitlab/arturbosch/detekt). A new snapshot is published after every merge to `main` from the [Deploy Snapshot](https://github.com/detekt/detekt/actions?query=workflow%3A%22Deploy+Snapshot%22) Github Action workflow. 
 
 ## Gradle setup with Buildscript
 
@@ -46,7 +46,7 @@ Make sure that you're adding the sonatype maven repository to both the `reposito
 If you're using the `plugins{}` block to apply detekt, you should update your `build.gradle` file to:
 
 ```groovy
-buildscript {
+plugins {
   id("io.gitlab.arturbosch.detekt") version "master-SNAPSHOT"
 }
 

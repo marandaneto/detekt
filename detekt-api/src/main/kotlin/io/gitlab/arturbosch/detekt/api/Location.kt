@@ -17,16 +17,24 @@ import java.nio.file.Paths
 data class Location @Deprecated("Consider relative path by passing a [FilePath]") @JvmOverloads constructor(
     val source: SourceLocation,
     val text: TextLocation,
+    @Deprecated(
+        "Use filePath instead",
+        ReplaceWith(
+            "filePath.absolutePath.toString()"
+        )
+    )
     val file: String,
     val filePath: FilePath = FilePath.fromAbsolute(Paths.get(file))
 ) : Compactable {
 
+    @Suppress("DEPRECATION")
     constructor(
         source: SourceLocation,
         text: TextLocation,
         filePath: FilePath
     ) : this(source, text, filePath.absolutePath.toString(), filePath)
 
+    @Suppress("DEPRECATION")
     @Deprecated(
         """
         locationString was removed and won't get passed to the main constructor.
@@ -65,8 +73,10 @@ data class Location @Deprecated("Consider relative path by passing a [FilePath]"
         fun startLineAndColumn(element: PsiElement, offset: Int = 0): PsiDiagnosticUtils.LineAndColumn {
             return try {
                 val range = element.textRange
-                DiagnosticUtils.getLineAndColumnInPsiFile(element.containingFile,
-                    TextRange(range.startOffset + offset, range.endOffset + offset))
+                DiagnosticUtils.getLineAndColumnInPsiFile(
+                    element.containingFile,
+                    TextRange(range.startOffset + offset, range.endOffset + offset)
+                )
             } catch (e: IndexOutOfBoundsException) {
                 // #3317 If any rule mutates the PsiElement, searching the original PsiElement may throw exception.
                 PsiDiagnosticUtils.LineAndColumn(-1, -1, null)
